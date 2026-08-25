@@ -15,17 +15,19 @@ function currency(n) {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n || 0);
 }
 
+// Funciones adaptadas a localStorage para persistencia en el navegador del usuario
 async function loadKey(key, fallback) {
   try {
-    const res = await window.storage.get(key, true);
-    return res ? JSON.parse(res.value) : fallback;
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : fallback;
   } catch {
     return fallback;
   }
 }
+
 async function saveKey(key, value) {
   try {
-    await window.storage.set(key, JSON.stringify(value), true);
+    localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
     console.error("Error guardando", key, e);
   }
@@ -158,13 +160,11 @@ function Resumen({ core, setCore, saveKey, totalPersonas, totalCotizado, totalAp
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      {/* Signature: pastel de progreso de presupuesto */}
       <Card style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
         <div style={{ fontSize: 13, color: "#c9d2ea", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 600 }}>
           Presupuesto aprobado vs meta
         </div>
         <svg width="180" height="150" viewBox="0 0 180 150">
-          {/* vela */}
           <rect x="86" y="4" width="8" height="18" rx="2" fill="#E85D4E" />
           <ellipse cx="90" cy="4" rx="5" ry="7" fill={pct >= 100 ? "#F2A93B" : "#5b6a92"} />
           {[0, 1, 2, 3].map((i) => {
