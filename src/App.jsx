@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { PartyPopper, Wallet, Users, ListChecks, Plus, Trash2, Check, Clock, Cake } from "lucide-react";
+import { PartyPopper, Wallet, Users, ListChecks, Plus, Trash2, Check, Clock, Cake, Edit2 } from "lucide-react";
 
 const TABS = [
   { id: "resumen", label: "Resumen", icon: PartyPopper },
@@ -65,7 +65,7 @@ export default function App() {
   const totalAbonado = budget.reduce((s, b) => s + (Number(b.advanced) || 0), 0);
   const totalPendiente = totalPresupuesto - totalAbonado;
   
-  // Total aportado por la "vaca"
+  // Total aportado por la "vaca" (asegurando conversión numérica)
   const totalAportesVaca = contributors.reduce((s, c) => s + (Number(c.amount) || 0), 0);
 
   const pct = core.budgetGoal ? Math.min(100, Math.round((totalAbonado / core.budgetGoal) * 100)) : 0;
@@ -165,20 +165,40 @@ function Card({ children, style }) {
 
 function Resumen({ core, setCore, saveKey, totalPersonas, totalPresupuesto, totalAbonado, totalPendiente, totalAportesVaca, pct, familiesCount, budget, contributors, setContributors }) {
   const [cForm, setCForm] = useState({ name: "", amount: "" });
+  const [editingId, setEditingId] = useState(null);
 
-  const addContributor = async () => {
+  const saveContributor = async () => {
     if (!cForm.name || !cForm.amount) return;
-    const item = { id: Date.now(), name: cForm.name, amount: Number(cForm.amount) };
-    const next = [...contributors, item];
+    
+    let next;
+    if (editingId !== null) {
+      // Actualizar existente
+      next = contributors.map(c => c.id === editingId ? { ...c, name: cForm.name, amount: Number(cForm.amount) } : c);
+      setEditingId(null);
+    } else {
+      // Crear nuevo
+      const item = { id: Date.now(), name: cForm.name, amount: Number(cForm.amount) };
+      next = [...contributors, item];
+    }
+
     setContributors(next);
     await saveKey("contributors", next);
     setCForm({ name: "", amount: "" });
+  };
+
+  const startEditContributor = (c) => {
+    setEditingId(c.id);
+    setCForm({ name: c.name, amount: c.amount });
   };
 
   const removeContributor = async (id) => {
     const next = contributors.filter(c => c.id !== id);
     setContributors(next);
     await saveKey("contributors", next);
+    if (editingId === id) {
+      setEditingId(null);
+      setCForm({ name: "", amount: "" });
+    }
   };
 
   const layers = 4;
@@ -240,22 +260,27 @@ function Resumen({ core, setCore, saveKey, totalPersonas, totalPresupuesto, tota
       {/* Sección de Aportantes / La Vaca */}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Aportantes para la Vaca</div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>
+            {editingId !== null ? "Editando Aportante" : "Aportantes para la Vaca"}
+          </div>
           <div className="mono" style={{ color: "#F2A93B", fontSize: 14 }}>Total Recaudado: {currency(totalAportesVaca)}</div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr auto", gap: 8, marginBottom: 14 }}>
           <input placeholder="Nombre del aportante" value={cForm.name} onChange={(e) => setCForm({ ...cForm, name: e.target.value })} style={inputStyle} />
           <input placeholder="Valor aportado" type="number" value={cForm.amount} onChange={(e) => setCForm({ ...cForm, amount: e.target.value })} style={inputStyle} />
-          <button onClick={addContributor} style={btnPrimary}><Plus size={16} /></button>
+          <button onClick={saveContributor} style={btnPrimary}>
+            {editingId !== null ? <Check size={16} /> : <Plus size={16} />}
+          </button>
         </div>
         <div style={{ display: "grid", gap: 8 }}>
           {contributors.length === 0 && <div style={{ color: "#9aa5c0", fontSize: 13, textAlign: "center" }}>No hay aportantes registrados todavía.</div>}
           {contributors.map(c => (
-            <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#1b2a4a", padding: "8px 12px", borderRadius: 8, border: "1px solid #33456e" }}>
+            <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#1b2a4a", padding: "8px 12px", borderRadius: 8, border: editingId === c.id ? "1px solid #F2A93B" : "1px solid #33456e" }}>
               <span style={{ fontWeight: 500 }}>{c.name}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <span className="mono" style={{ color: "#6FCF97", fontWeight: 700 }}>{currency(c.amount)}</span>
-                <button onClick={() => removeContributor(c.id)} style={{ background: "transparent", border: "none", color: "#E85D4E", cursor: "pointer" }}><Trash2 size={14} /></button>
+                <button onClick={() => startEditContributor(c)} style={{ background: "transparent", border: "none", color: "#F2A93B", cursor: "pointer" }} title="Editar aportante"><Edit2 size={14} /></button>
+                <button onClick={() => removeContributor(c.id)} style={{ background: "transparent", border: "none", color: "#E85D4E", cursor: "pointer" }} title="Eliminar aportante"><Trash2 size={14} /></button>
               </div>
             </div>
           ))}
