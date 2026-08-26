@@ -1,21 +1,19 @@
 import { useState, useEffect } from "react";
-import { PartyPopper, Wallet, Users, ListChecks, Plus, Trash2, Check, Clock, Cake } from "lucide-react";
+import { PartyPopper, Wallet, Users, ListChecks, Plus, Trash2, Check, Clock, Cake, DollarSign } from "lucide-react";
 
 const TABS = [
   { id: "resumen", label: "Resumen", icon: PartyPopper },
-  { id: "presupuesto", label: "Presupuesto", icon: Wallet },
+  { id: "presupuesto", label: "Ejecución de Presupuesto", icon: Wallet },
   { id: "familias", label: "Familias", icon: Users },
   { id: "tareas", label: "Tareas", icon: ListChecks },
 ];
 
-const STATUS_BUDGET = ["cotizado", "aprobado", "pagado"];
 const STATUS_TASK = ["pendiente", "en proceso", "listo"];
 
 function currency(n) {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n || 0);
 }
 
-// Funciones adaptadas a localStorage para persistencia en el navegador del usuario
 async function loadKey(key, fallback) {
   try {
     const item = localStorage.getItem(key);
@@ -39,29 +37,38 @@ export default function App() {
   const [core, setCore] = useState({ eventDate: "", budgetGoal: 3000000 });
   const [families, setFamilies] = useState([]);
   const [budget, setBudget] = useState([]);
+  const [contributors, setContributors] = useState([]);
   const [tasks, setTasks] = useState([]);
 
   useEffect(() => {
     (async () => {
-      const [c, f, b, t] = await Promise.all([
+      const [c, f, b, contrib, t] = await Promise.all([
         loadKey("core-data", { eventDate: "", budgetGoal: 3000000 }),
         loadKey("families", []),
         loadKey("budget", []),
+        loadKey("contributors", []),
         loadKey("tasks", []),
       ]);
       setCore(c);
       setFamilies(f);
       setBudget(b);
+      setContributors(contrib);
       setTasks(t);
       setLoading(false);
     })();
   }, []);
 
   const totalPersonas = families.reduce((s, f) => s + (Number(f.members) || 0), 0);
-  const totalCotizado = budget.reduce((s, b) => s + (Number(b.amount) || 0), 0);
-  const totalAprobado = budget.filter((b) => b.status !== "cotizado").reduce((s, b) => s + (Number(b.amount) || 0), 0);
-  const totalPagado = budget.filter((b) => b.status === "pagado").reduce((s, b) => s + (Number(b.amount) || 0), 0);
-  const pct = core.budgetGoal ? Math.min(100, Math.round((totalAprobado / core.budgetGoal) * 100)) : 0;
+  
+  // Cálculos de presupuesto
+  const totalPresupuesto = budget.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+  const totalAbonado = budget.reduce((s, b) => s + (Number(b.advanced) || 0), 0);
+  const totalPendiente = totalPresupuesto - totalAbonado;
+  
+  // Total aportado por la "vaca"
+  const totalAportesVaca = contributors.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+
+  const pct = core.budgetGoal ? Math.min(100, Math.round((totalAbonado / core.budgetGoal) * 100)) : 0;
 
   const daysLeft = (() => {
     if (!core.eventDate) return null;
@@ -133,9 +140,10 @@ export default function App() {
         {tab === "resumen" && (
           <Resumen
             core={core} setCore={setCore} saveKey={saveKey}
-            totalPersonas={totalPersonas} totalCotizado={totalCotizado}
-            totalAprobado={totalAprobado} totalPagado={totalPagado}
-            pct={pct} familiesCount={families.length}
+            totalPersonas={totalPersonas} totalPresupuesto={totalPresupuesto}
+            totalAbonado={totalAbonado} totalPendiente={totalPendiente}
+            totalAportesVaca={totalAportesVaca} pct={pct} familiesCount={families.length}
+            budget={budget} contributors={contributors} setContributors={setContributors}
           />
         )}
         {tab === "presupuesto" && <Presupuesto budget={budget} setBudget={setBudget} />}
@@ -154,15 +162,52 @@ function Card({ children, style }) {
   );
 }
 
-function Resumen({ core, setCore, saveKey, totalPersonas, totalCotizado, totalAprobado, totalPagado, pct, familiesCount }) {
+function Resumen({ core, setCore, saveKey, totalPersonas, totalPresupuesto, totalAbonado, totalPendiente, totalAportesVaca, pct, familiesCount, budget, contributors, setContributors }) {
+  const [cForm, setCForm] = useState({ name: "", amount: "" });
+
+  const addContributor = async () => {
+    if (!cForm.name || !cForm.amount) return;
+    const item = { id: Date.now(), name: cForm.name, amount: Number(cForm.amount) };
+    const next = [...contributors, item];
+    setContributors(next);
+    await saveKey("contributors", next);
+    setCForm({ name: "", amount: "" });
+  };
+
+  const removeContributor = async (id) => {
+    const next = contributors.filter(c => c.id !== id);
+    setContributors(next);
+    await saveKey("contributors", next);
+  };
+
   const layers = 4;
   const litLayers = Math.round((pct / 100) * layers);
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      {/* Cuadro principal de Presupuesto Total */}
+      <Card style={{ display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: 16, background: "linear-gradient(135deg, #24365c 0%, #1b2a4a 100%)", border: "1px solid #F2A93B" }}>
+        <div>
+          <div style={{ fontSize: 13, color: "#F2A93B", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700, marginBottom: 4 }}>
+            Control Financiero General
+          </div>
+          <div className="mono" style={{ fontSize: 32, fontWeight: 800, color: "#F5EFE0" }}>
+            {currency(totalPresupuesto)}
+          </div>
+          <div style={{ fontSize: 13, color: "#c9d2ea", marginTop: 4 }}>
+            Presupuesto total contratado de las contrataciones
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 12, color: "#9aa5c0" }}>Total Pendiente a Pagar</div>
+          <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: "#E85D4E" }}>{currency(totalPendiente)}</div>
+        </div>
+      </Card>
+
+      {/* Gráfico de pastel / progreso */}
       <Card style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
         <div style={{ fontSize: 13, color: "#c9d2ea", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 600 }}>
-          Presupuesto aprobado vs meta
+          Abonos realizados vs Meta
         </div>
         <svg width="180" height="150" viewBox="0 0 180 150">
           <rect x="86" y="4" width="8" height="18" rx="2" fill="#E85D4E" />
@@ -180,16 +225,67 @@ function Resumen({ core, setCore, saveKey, totalPersonas, totalCotizado, totalAp
         </svg>
         <div className="mono" style={{ fontSize: 26, fontWeight: 700, color: "#F2A93B" }}>{pct}%</div>
         <div style={{ fontSize: 13, color: "#c9d2ea" }}>
-          {currency(totalAprobado)} de {currency(core.budgetGoal)} aprobados
+          {currency(totalAbonado)} abonados de {currency(core.budgetGoal)} meta
         </div>
       </Card>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12 }}>
         <Stat label="Personas confirmadas" value={totalPersonas} />
         <Stat label="Familias" value={familiesCount} />
-        <Stat label="Cotizado total" value={currency(totalCotizado)} />
-        <Stat label="Pagado" value={currency(totalPagado)} />
+        <Stat label="Total Abonado" value={currency(totalAbonado)} />
+        <Stat label="Total Pendiente" value={currency(totalPendiente)} />
       </div>
+
+      {/* Sección de Aportantes / La Vaca */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Aportantes para la Vaca</div>
+          <div className="mono" style={{ color: "#F2A93B", fontSize: 14 }}>Total Recaudado: {currency(totalAportesVaca)}</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr auto", gap: 8, marginBottom: 14 }}>
+          <input placeholder="Nombre del aportante" value={cForm.name} onChange={(e) => setCForm({ ...cForm, name: e.target.value })} style={inputStyle} />
+          <input placeholder="Valor aportado" type="number" value={cForm.amount} onChange={(e) => setCForm({ ...cForm, amount: e.target.value })} style={inputStyle} />
+          <button onClick={addContributor} style={btnPrimary}><Plus size={16} /></button>
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          {contributors.length === 0 && <div style={{ color: "#9aa5c0", fontSize: 13, textAlign: "center" }}>No hay aportantes registrados todavía.</div>}
+          {contributors.map(c => (
+            <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#1b2a4a", padding: "8px 12px", borderRadius: 8, border: "1px solid #33456e" }}>
+              <span style={{ fontWeight: 500 }}>{c.name}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span className="mono" style={{ color: "#6FCF97", fontWeight: 700 }}>{currency(c.amount)}</span>
+                <button onClick={() => removeContributor(c.id)} style={{ background: "transparent", border: "none", color: "#E85D4E", cursor: "pointer" }}><Trash2 size={14} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Desglose de Contrataciones (Abonos y Saldos) */}
+      <Card>
+        <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 15 }}>Estado de Abonos y Saldos por Contratación</div>
+        <div style={{ display: "grid", gap: 8 }}>
+          {budget.length === 0 && <div style={{ color: "#9aa5c0", fontSize: 13 }}>No hay contrataciones agregadas en presupuesto.</div>}
+          {budget.map(b => {
+            const amount = Number(b.amount) || 0;
+            const advanced = Number(b.advanced) || 0;
+            const saldo = amount - advanced;
+            return (
+              <div key={b.id} style={{ background: "#1b2a4a", padding: 12, borderRadius: 8, border: "1px solid #33456e", display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{b.name}</div>
+                  <div style={{ fontSize: 12, color: "#9aa5c0" }}>Proveedor: {b.provider || "N/A"}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 12, color: "#c9d2ea" }}>Total: <span className="mono">{currency(amount)}</span></div>
+                  <div style={{ fontSize: 12, color: "#6FCF97" }}>Abonado: <span className="mono">{currency(advanced)}</span></div>
+                  <div style={{ fontSize: 12, color: "#E85D4E", fontWeight: 700 }}>Saldo: <span className="mono">{currency(saldo)}</span></div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
 
       <Card>
         <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 15 }}>Ajustes del evento</div>
@@ -222,21 +318,37 @@ function Stat({ label, value }) {
 }
 
 function Presupuesto({ budget, setBudget }) {
-  const [form, setForm] = useState({ name: "", provider: "", amount: "", status: "cotizado" });
+  const [form, setForm] = useState({ name: "", provider: "", amount: "", advanced: "", status: "pendiente" });
 
   const add = async () => {
     if (!form.name || !form.amount) return;
-    const item = { id: Date.now(), ...form, amount: Number(form.amount) };
+    const item = { 
+      id: Date.now(), 
+      name: form.name, 
+      provider: form.provider, 
+      amount: Number(form.amount), 
+      advanced: Number(form.advanced) || 0, 
+      status: form.status 
+    };
     const next = [...budget, item];
     setBudget(next);
     await saveKey("budget", next);
-    setForm({ name: "", provider: "", amount: "", status: "cotizado" });
+    setForm({ name: "", provider: "", amount: "", advanced: "", status: "pendiente" });
   };
+
   const update = async (id, patch) => {
-    const next = budget.map((b) => (b.id === id ? { ...b, ...patch } : b));
+    const next = budget.map((b) => {
+      if (b.id === id) {
+        const updated = { ...b, ...patch };
+        // Si cambian el valor total o el abono, recalculamos o validamos
+        return updated;
+      }
+      return b;
+    });
     setBudget(next);
     await saveKey("budget", next);
   };
+
   const remove = async (id) => {
     const next = budget.filter((b) => b.id !== id);
     setBudget(next);
@@ -246,30 +358,70 @@ function Presupuesto({ budget, setBudget }) {
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <Card>
-        <div style={{ fontWeight: 700, marginBottom: 12 }}>Agregar cotización</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr auto", gap: 8 }}>
+        <div style={{ fontWeight: 700, marginBottom: 12 }}>Agregar Contratación / Gasto</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr auto", gap: 8 }}>
           <input placeholder="Rubro (ej. Salón, Torta)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} />
           <input placeholder="Proveedor" value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} style={inputStyle} />
-          <input placeholder="Valor" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inputStyle} />
+          <input placeholder="Valor total" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inputStyle} />
+          <input placeholder="Primer abono" type="number" value={form.advanced} onChange={(e) => setForm({ ...form, advanced: e.target.value })} style={inputStyle} />
           <button onClick={add} style={btnPrimary}><Plus size={16} /></button>
         </div>
       </Card>
 
       <div style={{ display: "grid", gap: 10 }}>
-        {budget.length === 0 && <EmptyState text="Aún no hay cotizaciones. Agrega la primera arriba." />}
-        {budget.map((b) => (
-          <Card key={b.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontWeight: 600 }}>{b.name}</div>
-              <div style={{ fontSize: 13, color: "#9aa5c0" }}>{b.provider || "Sin proveedor"}</div>
-            </div>
-            <div className="mono" style={{ fontWeight: 700 }}>{currency(b.amount)}</div>
-            <select value={b.status} onChange={(e) => update(b.id, { status: e.target.value })} style={{ ...inputStyle, width: 130 }}>
-              {STATUS_BUDGET.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <button onClick={() => remove(b.id)} style={btnGhost}><Trash2 size={16} /></button>
-          </Card>
-        ))}
+        {budget.length === 0 && <EmptyState text="Aún no hay ejecuciones registradas. Agrega la primera arriba." />}
+        {budget.map((b) => {
+          const total = Number(b.amount) || 0;
+          const advanced = Number(b.advanced) || 0;
+          const saldo = total - advanced;
+
+          return (
+            <Card key={b.id} style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 15 }}>{b.name}</div>
+                  <div style={{ fontSize: 13, color: "#9aa5c0" }}>{b.provider || "Sin proveedor"}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#9aa5c0" }}>Total</div>
+                    <div className="mono" style={{ fontWeight: 700 }}>{currency(total)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#9aa5c0" }}>Saldo pendiente</div>
+                    <div className="mono" style={{ fontWeight: 700, color: saldo === 0 ? "#6FCF97" : "#E85D4E" }}>{currency(saldo)}</div>
+                  </div>
+                  <button onClick={() => remove(b.id)} style={btnGhost}><Trash2 size={16} /></button>
+                </div>
+              </div>
+
+              {/* Controles de Abonos y Estado */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, background: "#1b2a4a", padding: 10, borderRadius: 8 }}>
+                <label style={{ fontSize: 12, color: "#c9d2ea" }}>
+                  Monto Abonado (COP):
+                  <input 
+                    type="number" 
+                    value={b.advanced} 
+                    onChange={(e) => update(b.id, { advanced: Number(e.target.value) })}
+                    style={{ ...inputStyle, width: "100%", marginTop: 4 }} 
+                  />
+                </label>
+                <label style={{ fontSize: 12, color: "#c9d2ea" }}>
+                  Estado de pago:
+                  <select 
+                    value={b.status} 
+                    onChange={(e) => update(b.id, { status: e.target.value })} 
+                    style={{ ...inputStyle, width: "100%", marginTop: 4 }}
+                  >
+                    <option value="pendiente">Pendiente</option>
+                    <option value="abonado">Abonado</option>
+                    <option value="pagado">Pagado Total</option>
+                  </select>
+                </label>
+              </div>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
