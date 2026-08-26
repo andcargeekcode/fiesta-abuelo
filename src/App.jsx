@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { PartyPopper, Wallet, Users, ListChecks, Plus, Trash2, Check, Clock, Cake, DollarSign } from "lucide-react";
+import { PartyPopper, Wallet, Users, ListChecks, Plus, Trash2, Check, Clock, Cake } from "lucide-react";
 
 const TABS = [
   { id: "resumen", label: "Resumen", icon: PartyPopper },
@@ -85,9 +85,10 @@ export default function App() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(180deg,#1B2A4A 0%,#152238 100%)", fontFamily: "'Inter',sans-serif", color: "#F5EFE0", paddingBottom: 48 }}>
+    <div style={{ minHeight: "100vh", height: "100%", background: "linear-gradient(180deg,#1B2A4A 0%,#152238 100%)", fontFamily: "'Inter',sans-serif", color: "#F5EFE0", paddingBottom: 48 }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+        html, body, #root { background: #152238; margin: 0; padding: 0; min-height: 100%; }
         * { box-sizing: border-box; }
         .h1title { font-family:'Fraunces',serif; }
         .mono { font-family:'IBM Plex Mono',monospace; }
@@ -339,9 +340,7 @@ function Presupuesto({ budget, setBudget }) {
   const update = async (id, patch) => {
     const next = budget.map((b) => {
       if (b.id === id) {
-        const updated = { ...b, ...patch };
-        // Si cambian el valor total o el abono, recalculamos o validamos
-        return updated;
+        return { ...b, ...patch };
       }
       return b;
     });
